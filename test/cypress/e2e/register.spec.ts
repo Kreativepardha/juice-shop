@@ -26,8 +26,7 @@ describe('/#/register', () => {
                 body: JSON.stringify({
                   email: '<iframe src="javascript:alert(`xss`)">',
                   password: 'XSSed',
-                  passwordRepeat: 'XSSed',
-                  role: 'admin'
+                  passwordRepeat: 'XSSed'
                 })
               }
             )
@@ -58,8 +57,7 @@ describe('/#/register', () => {
           body: JSON.stringify({
             email: 'testing@test.com',
             password: 'pwned',
-            passwordRepeat: 'pwned',
-            role: 'admin'
+            passwordRepeat: 'pwned'
           })
         })
         if (response.status === 201) {
