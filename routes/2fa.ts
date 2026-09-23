@@ -12,12 +12,26 @@ import * as utils from '../lib/utils'
 import { challenges } from '../data/datacache'
 import { generateSecret, verifySync } from 'otplib'
 import * as security from '../lib/insecurity'
+import { rateLimitManager } from '../lib/rateLimit'
+
+const verifyRateLimit = rateLimitManager.getMiddleware('2fa_verify', { windowMs: 15 * 60 * 1000, max: 5, delayMs: 2000 })
 
 export async function verify (req: Request, res: Response) {
+  // Apply rate limiting
+  if (await verifyRateLimit(req, res)) {
+    return
+  }
+
   const { tmpToken, totpToken } = req.body
 
   try {
-    const { userId, type } = security.verify(tmpToken) && security.decode(tmpToken)
+    const decoded = security.verify(tmpToken) && security.decode(tmpToken)
+    if (!decoded) {
+      res.status(401).json({ error: 'Invalid token' })
+      return
+    }
+
+    const { userId, type } = decoded
 
     if (type !== 'password_valid_needs_second_factor_token') {
       throw new Error('Invalid token type')
@@ -33,8 +47,14 @@ export async function verify (req: Request, res: Response) {
     const plainUser = utils.queryResultToJson(user)
 
     if (!isValid) {
+      // Increment failed attempts
+      await rateLimitManager.incrementAttempts(req.ip)
       return res.status(401).send()
     }
+
+    // Reset failed attempts on success
+    await rateLimitManager.resetAttempts(req.ip)
+
     challengeUtils.solveIf(challenges.twoFactorAuthUnsafeSecretStorageChallenge, () => { return user.email === 'wurstbrot@' + config.get<string>('application.domain') })
 
     const [basket] = await BasketModel.findOrCreate({ where: { UserId: userId } })
